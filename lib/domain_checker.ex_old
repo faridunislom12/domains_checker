@@ -1,0 +1,97 @@
+defmodule DomainChecker do
+  use GenServer
+  alias HTTPoison
+
+  # Запуск GenServer
+  def start(_type, _args) do
+    IO.puts("Starting DomainChecker...")
+    GenServer.start_link(__MODULE__, [], name: __MODULE__)
+  end
+
+  def start_link(_) do
+    IO.puts("Starting DomainChecker...")
+    GenServer.start_link(__MODULE__, [], name: __MODULE__)
+  end
+
+  def init(state) do
+    schedule_check(state)
+    {:ok, state}
+  end
+
+  # Периодическая проверка
+  def handle_info({:check_domains, prev_results}, _state) do
+    IO.puts("Checking domains...")
+
+    new_results = check_domains(prev_results)
+
+    log_results(new_results)
+
+    schedule_check(new_results)
+
+    {:noreply, new_results}
+  end
+
+  # Планируем следующую проверку через минуту
+  defp schedule_check(state) do
+    Process.send_after(self(), {:check_domains, state}, 10_000)
+  end
+
+  # Проверяем домены и добавляем новые результаты для каждого домена
+  defp check_domains(prev_results) do
+    domains = Application.get_env(:domain_checker, :domains, ["google.com", "sver.ka", "yandex.ru", "xt-xarid.uz", "blabla.com"])
+
+    timestamp = :os.system_time(:seconds)
+
+    # Новый массив для текущей проверки
+    new_check_results =
+      Enum.map(domains, fn domain ->
+        status =
+          case check_domain(domain) do
+            :ok -> 1  # 1 означает живой
+            _ -> 0  # 0 означает неактивный
+          end
+
+        {domain, [timestamp, status]}
+      end)
+
+    # Добавляем текущую проверку в начало списка всех предыдущих проверок
+    [new_check_results | prev_results]
+  end
+
+  # Проверка домена
+  defp check_domain(domain) do
+    case HTTPoison.get("http://#{domain}") do
+      {:ok, _response} -> :ok
+      _ -> :error
+    end
+  end
+
+  defp log_results(results) do
+    log_dir = "logs"
+    log_file = "#{log_dir}/domain_status.log"
+
+    unless File.exists?(log_dir) do
+      IO.puts("Creating logs directory...")
+      File.mkdir(log_dir)
+    end
+
+    log_message =
+      results
+      |> Enum.map(fn check_results ->
+        Enum.map(check_results, fn {domain, [timestamp, status]} ->
+          log_entry = "#{DateTime.utc_now()} - #{domain} - #{timestamp} status: #{inspect(status)}"
+          IO.puts(log_entry)  # Выводим результат в консоль
+          log_entry
+        end)
+      end)
+      |> List.flatten()
+      |> Enum.join("\n")
+
+    log_message = log_message <> "\n"
+
+    case File.write(log_file, log_message, [:append]) do
+      :ok -> IO.puts("Logged results.")
+      {:error, reason} -> IO.puts("Failed to write log: #{reason}")
+    end
+  end
+end
