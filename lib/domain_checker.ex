@@ -1,120 +1,44 @@
 defmodule DomainChecker do
-  use GenServer
-  alias HTTPoison
-
-  # Запуск GenServer
-  def start(_type, _args) do
-    IO.puts("Starting DomainChecker...")
-    GenServer.start_link(__MODULE__, [], name: __MODULE__)
+  def start(domains) do
+    Enum.each(domains, fn domain ->
+      Task.start(fn -> loop(domain) end)
+    end)
   end
 
-  def start_link(_) do
-    IO.puts("Starting DomainChecker...")
+  defp loop(domain) do
+    result = check_domain(domain)
 
-    GenServer.start_link(__MODULE__, [], name: __MODULE__)
+    log_results(domain, result)
+
+    :timer.sleep(60_000)
+    loop(domain)
   end
 
-  def init(state) do
-    schedule_check(state)
-    {:ok, state}
-  end
-
-  # Периодическая проверка
-  def handle_info({:check_domains, prev_results}, _state) do
-    IO.puts("Checking domains...")
-
-    new_results = check_domains(prev_results)
-
-    log_results(new_results)
-
-    schedule_check(new_results)
-
-    {:noreply, new_results}
-  end
-
-  # Планируем следующую проверку через минуту
-  defp schedule_check(state) do
-    Process.send_after(self(), {:check_domains, state}, 5_000)
-  end
-
-  # Проверяем домены и добавляем новые результаты для каждого домена
-  defp check_domains(prev_results) do
-    urls =
-      File.read!("urls.txt")
-      |> String.split("\n", trim: true)
-      |> Enum.map(&String.trim/1)
-    IO.inspect(urls)
-    domains = Application.get_env(:domain_checker, :domains, urls)
-
-    #domains = Application.get_env(:domain_checker, :domains, ["google.com", "sver.ka", "yandex.ru", "xt-xarid.uz", "blabla.com"])
-
-    timestamp = :os.system_time(:seconds)
-
-    # Новый массив для текущей проверки
-     new_check_results =
-       Enum.map(domains, fn domain ->
-         status =
-           case check_domain(domain) do
-             :ok -> 1  # 1 means alive
-             _ -> 0    # 0 means inactive
-           end
-
-         {domain, [timestamp, status]}
-       end)
-       |> Enum.into(%{})  # Convert list of tuples to a map
-
-     # Merge new results into previous results, grouping by domain
-        prev_results = if is_map(prev_results), do: prev_results, else: %{}
-
-        updated_results =
-          Enum.reduce(new_check_results, prev_results, fn {domain, result}, acc ->
-            Map.update(acc, domain, [result], fn existing -> existing ++ [result] end)
-          end)
-
-     updated_results
-  end
-
-  # Проверка домена
   defp check_domain(domain) do
-    #if :rand.uniform(2) == 1, do: :ok, else: :error
+    case :gen_tcp.connect(String.to_charlist(domain), 80, [:binary, active: false], 5000) do
+      {:ok, socket} ->
+        :gen_tcp.close(socket)
+        1
+        #IO.puts("[OK] #{domain} — reachable on port 80")
 
-        case :inet.gethostbyname(String.to_atom(domain)) do
-          {:ok, host} -> :ok
-
-          {:error, :einval} -> :error
-
-          {:error, reason} -> :error
-        end
+      {:error, reason} ->
+        0
+        #IO.puts("[DEAD] #{domain} — #{inspect(reason)}")
+    end
   end
 
-    defp log_results(results) do
-      log_dir = "logs"
-      log_file = "#{log_dir}/domain_status.log"
+    defp log_results(domain, result) do
+      log_dir = "logs/checker"
+      File.mkdir_p!(log_dir)
 
-      unless File.exists?(log_dir) do
-        IO.puts("Creating logs directory...")
-        File.mkdir(log_dir)
+      log_file = Path.join(log_dir, "#{domain}.log")
+      timestamp = DateTime.utc_now() |> DateTime.to_string()
+      line = "#{timestamp} — #{result}\n"
+
+      case File.write(log_file, line, [:append]) do
+        _ -> :ok  # do nothing if successful IO.puts("[LOGGED] #{domain} — #{result}")
+        {:error, reason} -> IO.puts("[ERROR] Failed to write log: #{inspect(reason)}")
       end
-
-     IO.inspect(results)
-
-      log_message =
-        results
-        |> Enum.flat_map(fn {domain, result_list} ->
-          Enum.map(result_list, fn [timestamp, status] ->
-            log_entry = "#{DateTime.utc_now()} - #{domain} - #{timestamp} status: #{inspect(status)}"
-            log_entry
-          end)
-        end)
-        |> Enum.join("\n")
-
-      log_message = log_message <> "\n"
-
-      case File.write(log_file, log_message, [:append]) do
-        :ok -> IO.puts("Results logged")
-        {:error, reason} -> IO.puts("Failed to write log: #{reason}")
-      end
-
-     IO.puts("\n")
     end
+
 end

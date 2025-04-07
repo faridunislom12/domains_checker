@@ -13,15 +13,14 @@ defmodule DomainChecker.MixProject do
 
   def application do
     [
-      extra_applications: [:logger, :finch],
-      mod: {DomainChecker, []}  # Указываем, что при старте будет вызвана функция start/2 из модуля DomainChecker
+      mod: {DomainChecker.Application, []},
+      extra_applications: [:logger, :httpoison]
     ]
   end
 
   defp deps do
     [
-      {:httpoison, "~> 1.8"},
-      {:finch, "~> 0.15"}
+      {:httpoison, "~> 1.8"}
     ]
   end
 end
