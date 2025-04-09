@@ -27,18 +27,18 @@ defmodule DomainChecker do
     end
   end
 
-    defp log_results(domain, result) do
-      log_dir = "logs/checker"
-      File.mkdir_p!(log_dir)
+  defp log_results(domain, result) do
+    log_dir = "logs/checker"
+    File.mkdir_p!(log_dir)
 
-      log_file = Path.join(log_dir, "#{domain}.log")
-      timestamp = DateTime.utc_now() |> DateTime.to_string()
-      line = "#{timestamp} — #{result}\n"
+    log_file = Path.join(log_dir, "#{domain}.log")
+    timestamp = DateTime.utc_now() |> DateTime.to_string()
+    line = "#{timestamp} — #{result}\n"
 
-      case File.write(log_file, line, [:append]) do
-        _ -> :ok  # do nothing if successful IO.puts("[LOGGED] #{domain} — #{result}")
-        {:error, reason} -> IO.puts("[ERROR] Failed to write log: #{inspect(reason)}")
-      end
+    case File.write(log_file, line, [:append]) do
+      _ -> :ok  # do nothing if successful IO.puts("[LOGGED] #{domain} — #{result}")
+      {:error, reason} -> IO.puts("[ERROR] Failed to write log: #{inspect(reason)}")
     end
+  end
 
 end
