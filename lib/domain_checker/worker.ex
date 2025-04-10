@@ -26,7 +26,8 @@ defmodule DomainChecker.Worker do
         :gen_tcp.close(socket)
         1
 
-      {:error, _reason} ->
+      {:error, reason} ->
+        #log_results(domain, reason)
         0
     end
   end
