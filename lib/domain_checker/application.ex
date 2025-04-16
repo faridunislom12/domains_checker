@@ -4,6 +4,7 @@ defmodule DomainChecker.Application do
   def start(_type, _args) do
     children = [
       {Registry, keys: :unique, name: DomainChecker.Registry},
+      DomainChecker.DynamicSupervisor,
       DomainChecker.Manager
     ]
 

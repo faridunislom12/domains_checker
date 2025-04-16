@@ -1,6 +1,8 @@
 defmodule DomainChecker.Manager do
   use GenServer
 
+  alias DomainChecker.Worker
+
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
   end
@@ -11,8 +13,10 @@ defmodule DomainChecker.Manager do
       |> String.split("\n", trim: true)
       |> Enum.map(&String.trim/1)
 
+    IO.inspect(urls)
+
     Enum.each(urls, fn domain ->
-      DomainChecker.Worker.start_link(domain)
+      DynamicSupervisor.start_child(DomainChecker.DynamicSupervisor, {Worker, domain})
     end)
 
     {:ok, %{}}

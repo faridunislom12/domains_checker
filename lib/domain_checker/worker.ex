@@ -2,7 +2,9 @@ defmodule DomainChecker.Worker do
   use GenServer
 
   def start_link(domain) do
-    GenServer.start_link(__MODULE__, domain, name: via_tuple(domain))
+    IO.puts("Worker.start_link")
+
+    GenServer.start_link(__MODULE__, domain, name: :"DNS-Worker-on-#{domain}")
   end
 
   def init(domain) do
@@ -12,15 +14,27 @@ defmodule DomainChecker.Worker do
   def handle_continue(:check_loop, {domain, results}) do
     result = check_domain(domain)
 
-    :timer.sleep(10_000)
+    updated_results = results ++ [{DateTime.utc_now(), result}]
 
-    timestamp = DateTime.utc_now() |> DateTime.to_iso8601()
+    log_results(domain, updated_results)
+
+    {:noreply, {domain, updated_results}, 10_000}
+  end
+
+  def handle_info(:timeout, state) do
+    # Call your domain check logic again
+    {domain, results} = state
+
+    result = check_domain(domain)
+    timestamp = DateTime.utc_now()
     updated_results = results ++ [{timestamp, result}]
 
     log_results(domain, updated_results)
 
-    {:noreply, {domain, updated_results}, {:continue, :check_loop}}
+    # schedule next timeout
+    {:noreply, {domain, updated_results}, 10_000}
   end
+
 
   # --- Helpers ---
 
@@ -42,7 +56,7 @@ defmodule DomainChecker.Worker do
 
     log_file = Path.join(log_dir, "#{domain}.log")
     timestamp = DateTime.utc_now() |> DateTime.to_string()
-    line = "#{timestamp} — #{result}\n"
+    line = "#{DateTime.to_iso8601(timestamp)} — #{result}\n"
 
     case File.write(log_file, line, [:append]) do
       :ok -> :ok
@@ -58,7 +72,7 @@ defmodule DomainChecker.Worker do
 
     result_string =
       Enum.map(result, fn {timestamp, res} ->
-        "#{timestamp} — #{res}"
+        "#{DateTime.to_iso8601(timestamp)} — #{res}"
       end)
       |> Enum.join("\n")  # Join entries with newline if multiple
 
@@ -68,9 +82,5 @@ defmodule DomainChecker.Worker do
       :ok -> :ok
       {:error, reason} -> IO.puts("[ERROR] Failed to write log: #{inspect(reason)}")
     end
-  end
-
-  defp via_tuple(domain) do
-    {:via, Registry, {DomainChecker.Registry, domain}}
   end
 end
